@@ -1,7 +1,5 @@
 #!/usr/bin/env nextflow
 
-nextflow.enable.dsl=2
-
 params.samplesheet = "samplesheet.csv"
 params.outdir = null
 params.kmer_fasta = "${projectDir}/data/all_tagging_kmers.fasta.gz"
@@ -37,30 +35,30 @@ def helpMessage() {
 // ---------------------------------------------------------------------------
 
 process DBG_LIGHTER {
-    tag "LIGHTER_${name}"
+    tag "LIGHTER_${meta.id}"
 
     input:
-    tuple val(name), path(input_file), val(file_type), val(cram_ref)
+    tuple val(meta), path(input_file)
 
     output:
-    tuple val(name), path("${name}.cor.fq.gz")
+    tuple val(meta), path("${meta.id}.cor.fq.gz")
 
     script:
     """
     lighter_input="${input_file}"
 
-    if [[ "${file_type}" == "bam" ]]; then    
-        samtools fastq -@ ${task.cpus} "${input_file}" > "${name}.for_lighter.fastq"
-        lighter_input="${name}.for_lighter.fastq"
-    elif [[ "${file_type}" == "cram" ]]; then
-        if [[ "${cram_ref}" == "NA" || -z "${cram_ref}" ]]; then
-            echo "CRAM input requires CRAM_REFERENCE_PATH for sample ${name}" >&2
+    if [[ "${meta.file_type}" == "bam" ]]; then    
+        samtools fastq -@ ${task.cpus} "${input_file}" > "${meta.id}.for_lighter.fastq"
+        lighter_input="${meta.id}.for_lighter.fastq"
+    elif [[ "${meta.file_type}" == "cram" ]]; then
+        if [[ "${meta.cram_ref}" == "NA" || -z "${meta.cram_ref}" ]]; then
+            echo "CRAM input requires CRAM_REFERENCE_PATH for sample ${meta.id}" >&2
             exit 1
         fi
-        samtools fastq -@ ${task.cpus} --reference "${cram_ref}" "${input_file}" > "${name}.for_lighter.fastq"
-        lighter_input="${name}.for_lighter.fastq"
-    elif [[ "${file_type}" != "fastq.gz" && "${file_type}" != "fastq" && "${file_type}" != "fasta" ]]; then
-        echo "Unsupported FILE_TYPE for DBG_LIGHTER: ${file_type}. Allowed: fastq.gz, fastq, fasta, bam, cram" >&2
+        samtools fastq -@ ${task.cpus} --reference "${meta.cram_ref}" "${input_file}" > "${meta.id}.for_lighter.fastq"
+        lighter_input="${meta.id}.for_lighter.fastq"
+    elif [[ "${meta.file_type}" != "fastq.gz" && "${meta.file_type}" != "fastq" && "${meta.file_type}" != "fasta" ]]; then
+        echo "Unsupported FILE_TYPE for DBG_LIGHTER: ${meta.file_type}. Allowed: fastq.gz, fastq, fasta, bam, cram" >&2
         exit 1
     fi
 
@@ -89,7 +87,7 @@ process DBG_LIGHTER {
     esac
 
     if [[ -z "\${corrected_file}" ]]; then
-        echo "Lighter did not produce a corrected read file for sample ${name}" >&2
+        echo "Lighter did not produce a corrected read file for sample ${meta.id}" >&2
         exit 1
     fi
     if [[ ! -f "\${corrected_file}" ]]; then
@@ -97,27 +95,27 @@ process DBG_LIGHTER {
         exit 1
     fi
     if [[ "\${corrected_file}" == *.gz ]]; then
-        cp "\${corrected_file}" "${name}.cor.fq.gz"
+        cp "\${corrected_file}" "${meta.id}.cor.fq.gz"
     else
-        gzip -c "\${corrected_file}" > "${name}.cor.fq.gz"
+        gzip -c "\${corrected_file}" > "${meta.id}.cor.fq.gz"
         rm -f "\${corrected_file}"
     fi
 
-    if [[ -f "${name}.for_lighter.fastq" ]]; then
-        rm -f "${name}.for_lighter.fastq"
+    if [[ -f "${meta.id}.for_lighter.fastq" ]]; then
+        rm -f "${meta.id}.for_lighter.fastq"
     fi
 
     """
 }
 
 process DBG_BCALM {
-    tag "BCALM_${name}"
+    tag "BCALM_${meta.id}"
 
     input:
-    tuple val(name), path(corrected_fastq)
+    tuple val(meta), path(corrected_fastq)
 
     output:
-    tuple val(name), path("${name}.unitigs.fa.gz")
+    tuple val(meta), path("${meta.id}.unitigs.fa.gz")
 
     script:
     """
@@ -126,11 +124,11 @@ process DBG_BCALM {
         -kmer-size 61 \
         -abundance-min 3 \
         -max-memory ${task.memory.toMega()} \
-        -out "${name}"
+        -out "${meta.id}"
 
-    gzip -c "${name}.unitigs.fa" > "${name}.unitigs.fa.gz"
+    gzip -c "${meta.id}.unitigs.fa" > "${meta.id}.unitigs.fa.gz"
 
-    rm -f "${name}.list_reads"
+    rm -f "${meta.id}.list_reads"
     """
 }
 
@@ -148,15 +146,15 @@ process UNPACK_KMER_FASTA {
 }
 
 process GATHER_KMERS_DBG {
-    tag "${name}"
+    tag "${meta.id}"
 
     input:
-    tuple val(name), path(input_file)
+    tuple val(meta), path(input_file)
     path(kmer_fasta)
     path(dbg_script)
 
     output:
-    tuple val(name), path("${name}.kmer.tsv")
+    tuple val(meta), path("${meta.id}.kmer.tsv")
 
     script:
     """
@@ -167,15 +165,15 @@ process GATHER_KMERS_DBG {
     gzip -dc "${input_file}" > dbg.uncompressed.fa
 
     ### subset dbg to those contigs with one matching kmers and write to new file
-    pv dbg.uncompressed.fa | grep -B 1 -f kmer_list.txt > "${name}".kmers.zgrep.txt
+    pv dbg.uncompressed.fa | grep -B 1 -f kmer_list.txt > "${meta.id}".kmers.zgrep.txt
     
 
     ### call python file to convert the zgrep output into a kmer table
     python3 ${dbg_script} \\
-        --name "${name}" \\
-        --zgrep_file "${name}.kmers.zgrep.txt"  \\
+        --name "${meta.id}" \\
+        --zgrep_file "${meta.id}.kmers.zgrep.txt"  \\
         --kmer_list kmer_list.txt \\
-        --output "${name}.kmer.tsv"
+        --output "${meta.id}.kmer.tsv"
 
     rm kmer_list.txt
     rm dbg.uncompressed.fa
@@ -183,41 +181,42 @@ process GATHER_KMERS_DBG {
 }
 
 process GATHER_KMERS_JF {
-    tag "${name}"
+    tag "${meta.id}"
 
     input:
-    tuple val(name), path(input_file), val(file_type), val(cram_ref), path(kmer_fasta)
+    tuple val(meta), path(input_file)
+    path(kmer_fasta)
 
     output:
-    tuple val(name), path("${name}.kmer.tsv")
+    tuple val(meta), path("${meta.id}.kmer.tsv")
 
     script:
     """
-    if [[ "${file_type}" == "fastq" || "${file_type}" == "fasta" ]]; then
+    if [[ "${meta.file_type}" == "fastq" || "${meta.file_type}" == "fasta" ]]; then
         if [[ "${input_file}" == *.gz || "${input_file}" == *.bgz ]]; then
-            jellyfish count -m 61 -s 2G -t ${task.cpus} --if "${kmer_fasta}" -C <(zcat "${input_file}") -o "${name}.jf"
+            jellyfish count -m 61 -s 2G -t ${task.cpus} --if "${kmer_fasta}" -C <(zcat "${input_file}") -o "${meta.id}.jf"
         else
-            jellyfish count -m 61 -s 2G -t ${task.cpus} --if "${kmer_fasta}" -C <(cat "${input_file}") -o "${name}.jf"
+            jellyfish count -m 61 -s 2G -t ${task.cpus} --if "${kmer_fasta}" -C <(cat "${input_file}") -o "${meta.id}.jf"
         fi
-    elif [[ "${file_type}" == "bam" ]]; then
-        jellyfish count -m 61 -s 2G -t ${task.cpus} --if "${kmer_fasta}" -C <(samtools fasta "${input_file}") -o "${name}.jf"
-    elif [[ "${file_type}" == "cram" ]]; then
-        if [[ "${cram_ref}" == "NA" || -z "${cram_ref}" ]]; then
-            echo "CRAM input requires CRAM_REFERENCE_PATH for sample ${name}" >&2
+    elif [[ "${meta.file_type}" == "bam" ]]; then
+        jellyfish count -m 61 -s 2G -t ${task.cpus} --if "${kmer_fasta}" -C <(samtools fasta "${input_file}") -o "${meta.id}.jf"
+    elif [[ "${meta.file_type}" == "cram" ]]; then
+        if [[ "${meta.cram_ref}" == "NA" || -z "${meta.cram_ref}" ]]; then
+            echo "CRAM input requires CRAM_REFERENCE_PATH for sample ${meta.id}" >&2
             exit 1
         fi
-        jellyfish count -m 61 -s 2G -t ${task.cpus} --if "${kmer_fasta}" -C <(samtools fasta --reference "${cram_ref}" "${input_file}") -o "${name}.jf"
+        jellyfish count -m 61 -s 2G -t ${task.cpus} --if "${kmer_fasta}" -C <(samtools fasta --reference "${meta.cram_ref}" "${input_file}") -o "${meta.id}.jf"
     else
-        echo "Unsupported FILE_TYPE for GATHER_KMERS_JF: ${file_type}" >&2
+        echo "Unsupported FILE_TYPE for GATHER_KMERS_JF: ${meta.file_type}" >&2
         exit 1
     fi
 
     jellyfish query \\
-        "${name}.jf" \\
+        "${meta.id}.jf" \\
         -s "${kmer_fasta}" \\
-        -o "${name}.kmer.tsv"
+        -o "${meta.id}.kmer.tsv"
 
-    rm "${name}.jf"
+    rm "${meta.id}.jf"
     """
 }
 
@@ -272,81 +271,67 @@ workflow {
 
     if (params.help) {
         helpMessage()
-        return
+        exit(0)
     }
 
-    // Parse the semicolon-delimited samplesheet, retaining the MAKE_DBG flag for routing
+    // Parse the semicolon-delimited samplesheet into [meta, input_file] tuples
     channel
         .fromPath(params.samplesheet)
         .splitCsv(header: true, sep: ';')
         .map { row ->
-            def normalizationRaw = (row.NORMALOIZATION ?: row.NORMALIZATION ?: '').toString().trim()
+            def normalizationRaw = (row.NORMALIZATION ?: '').toString().trim()
             def normalizationLower = normalizationRaw.toLowerCase()
             def isFloatNormalization = normalizationRaw.isNumber()
             if (!(normalizationLower in ['global', 'chromosome', 'p_arm', 'q_arm']) && !isFloatNormalization) {
                 error "Invalid NORMALIZATION value '${normalizationRaw}' for sample ${row.NAME}. Allowed values are 'global', 'chromosome', 'p_arm', 'q_arm', or a float."
             }
 
-            tuple(
-                row.NAME,
-                file(row.FILE_PATH),
-                row.FILE_TYPE,
-                row.CRAM_REFERENCE_PATH,
-                row.MAKE_DBG.toLowerCase() == 'true',
-                normalizationRaw
-            )
+            // NORMALIZATION stays out of meta: GENOTYPE reads it from the samplesheet,
+            // and keeping it out avoids invalidating cached k-mer counting when it changes
+            def meta = [
+                id:        row.NAME,
+                file_type: row.FILE_TYPE,
+                cram_ref:  row.CRAM_REFERENCE_PATH,
+                make_dbg:  row.MAKE_DBG.toLowerCase() == 'true'
+            ]
+            tuple(meta, file(row.FILE_PATH))
         }
-        .branch {
-            _name, _input_file, file_type, _cram_ref, make_dbg, _normalization ->
-            to_build_dbg:  make_dbg == true
-            existing_dbg:  make_dbg == false && file_type == 'dbg'
-            other:         make_dbg == false && file_type != 'dbg'
+        .branch { meta, _input_file ->
+            to_build_dbg:  meta.make_dbg
+            existing_dbg:  !meta.make_dbg && meta.file_type == 'dbg'
+            other:         !meta.make_dbg && meta.file_type != 'dbg'
         }
         .set { branched }
 
-    // Unpack tagging kmers once and reuse in all jellyfish tasks
+    // Unpack tagging kmers once and reuse in all k-mer gathering tasks
     UNPACK_KMER_FASTA(channel.value(file(params.kmer_fasta, checkIfExists: true)))
 
     // Build de Bruijn graphs where requested
     DBG_LIGHTER(
-        branched.to_build_dbg.map { row ->
-            tuple(row[0], row[1], row[2], row[3])
-        }
+        branched.to_build_dbg
     )
 
     DBG_BCALM(
         DBG_LIGHTER.out
     )
 
-    // Rows that already have a pre-built DBG file go straight to GATHER_KMERS_DBG
-    existing_dbg_for_gather_ch = branched.existing_dbg
-        .map { name, input_file, _file_type, _cram_ref, _make_dbg, _normalization ->
-            tuple(name, input_file)
-        }
-
     // Combine freshly built DBGs and pre-existing DBG files, then gather k-mers
     GATHER_KMERS_DBG(
-        DBG_BCALM.out.mix(existing_dbg_for_gather_ch),
+        DBG_BCALM.out.mix(branched.existing_dbg),
         UNPACK_KMER_FASTA.out,
         file("${projectDir}/scripts/dbg_to_kmer_table.py")
     )
 
     // All remaining file types go to the Jellyfish-based k-mer counter
     GATHER_KMERS_JF(
-        branched.other
-            .map { name, input_file, file_type, cram_ref, _make_dbg, _normalization ->
-                tuple(name, input_file, file_type, cram_ref)
-            }
-            .combine(UNPACK_KMER_FASTA.out)
-            .map { name, input_file, file_type, cram_ref, unpacked_kmer_fasta ->
-                tuple(name, input_file, file_type, cram_ref, unpacked_kmer_fasta)
-            }
+        branched.other,
+        UNPACK_KMER_FASTA.out
     )
 
     // Collect names of all kmer output files into a single manifest
     FORMAT_AND_MERGE_KMERS(
         GATHER_KMERS_DBG.out.mix(GATHER_KMERS_JF.out)
-            .map { _name, kmer_file -> kmer_file }
+            .map { _meta, kmer_file -> kmer_file }
             .collect(),
         file("${projectDir}/scripts/reformat_merge_kmers.py"),
         file(params.kmer_info_file, checkIfExists: true)

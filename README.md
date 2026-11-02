@@ -14,6 +14,19 @@ For new samples, HOROSCOPE counts predefined *k*-mer sets, normalizes *k*-mer do
 The workflow supports several input formats, including FASTQ/FASTA files, BAM/CRAM alignments, and precomputed de Bruijn graph unitigs. It also provides alternative normalization strategies to account for variable copy-number states, for example in tumor genomes.
 
 
+## Workflow Overview
+
+![HOROSCOPE workflow metro map](metro-map-horoscope.png)
+
+Each sample in the samplesheet takes one of three routes to a per-sample *k*-mer count table:
+
+- `MAKE_DBG=true`: reads are error-corrected with Lighter (`DBG_LIGHTER`) and assembled into 61-mer unitigs with BCALM (`DBG_BCALM`), then *k*-mers are gathered from the unitigs (`GATHER_KMERS_DBG`).
+- `FILE_TYPE=dbg` with `MAKE_DBG=false`: precomputed de Bruijn graph unitigs go directly to `GATHER_KMERS_DBG`.
+- All other inputs with `MAKE_DBG=false`: *k*-mers are counted directly from FASTQ/FASTA, BAM or CRAM files with Jellyfish (`GATHER_KMERS_JF`).
+
+`UNPACK_KMER_FASTA` decompresses the tagging *k*-mer set once and provides it to both *k*-mer gathering steps. `FORMAT_AND_MERGE_KMERS` then merges all per-sample tables and adds the *k*-mer cluster annotation, and `GENOTYPE` normalizes the counts and applies the pretrained models to infer centromere architecture and HOR array length.
+
+
 ## Usage
 
 Run from repository root:

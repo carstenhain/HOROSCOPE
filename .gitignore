@@ -17,3 +17,5 @@ scripts/final_kmer_merge.py
 scripts/test.ipynb
 nextflow_lsf.config
 .nextflow
+data/make_kmers.ipynb
+data/check_data.ipynb
