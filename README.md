@@ -24,7 +24,7 @@ Each sample in the samplesheet takes one of three routes to a per-sample *k*-mer
 - `FILE_TYPE=dbg` with `MAKE_DBG=false`: precomputed de Bruijn graph unitigs go directly to `GATHER_KMERS_DBG`.
 - All other inputs with `MAKE_DBG=false`: *k*-mers are counted directly from FASTQ/FASTA, BAM or CRAM files with Jellyfish (`GATHER_KMERS_JF`).
 
-`UNPACK_KMER_FASTA` decompresses the tagging *k*-mer set once and provides it to both *k*-mer gathering steps. `FORMAT_AND_MERGE_KMERS` then merges all per-sample tables and adds the *k*-mer cluster annotation, and `GENOTYPE` normalizes the counts and applies the pretrained models to infer centromere architecture and HOR array length.
+`UNPACK_KMER_FASTA` decompresses the tagging *k*-mer set once and shares the FASTA with all `GATHER_KMERS_JF` tasks; `MAKE_KMER_LIST` derives a plain *k*-mer list from it once and shares that with all `GATHER_KMERS_DBG` tasks. `FORMAT_AND_MERGE_KMERS` then merges all per-sample tables and adds the *k*-mer cluster annotation, and `GENOTYPE` normalizes the counts and applies the pretrained models to infer centromere architecture and HOR array length.
 
 
 ## Usage

@@ -145,12 +145,26 @@ process UNPACK_KMER_FASTA {
     """
 }
 
+process MAKE_KMER_LIST {
+    input:
+    path(kmer_fasta)
+
+    output:
+    path("kmer_list.txt")
+
+    script:
+    """
+    ### rewrite fasta to a list of kmers
+    awk 'NR % 2 == 0' "${kmer_fasta}" > kmer_list.txt
+    """
+}
+
 process GATHER_KMERS_DBG {
     tag "${meta.id}"
 
     input:
     tuple val(meta), path(input_file)
-    path(kmer_fasta)
+    path(kmer_list)
     path(dbg_script)
 
     output:
@@ -158,24 +172,20 @@ process GATHER_KMERS_DBG {
 
     script:
     """
-    ### rewrite fasta to a list of kmers
-    cat "${kmer_fasta}" | awk 'NR % 2 == 0' > kmer_list.txt
-
     ### create local uncompressed copy of the dbg file in task work directory
     gzip -dc "${input_file}" > dbg.uncompressed.fa
 
     ### subset dbg to those contigs with one matching kmers and write to new file
-    pv dbg.uncompressed.fa | grep -B 1 -f kmer_list.txt > "${meta.id}".kmers.zgrep.txt
-    
+    pv dbg.uncompressed.fa | grep -B 1 -f "${kmer_list}" > "${meta.id}".kmers.zgrep.txt
+
 
     ### call python file to convert the zgrep output into a kmer table
     python3 ${dbg_script} \\
         --name "${meta.id}" \\
         --zgrep_file "${meta.id}.kmers.zgrep.txt"  \\
-        --kmer_list kmer_list.txt \\
+        --kmer_list "${kmer_list}" \\
         --output "${meta.id}.kmer.tsv"
 
-    rm kmer_list.txt
     rm dbg.uncompressed.fa
     """
 }
@@ -303,8 +313,11 @@ workflow {
         }
         .set { branched }
 
-    // Unpack tagging kmers once and reuse in all k-mer gathering tasks
+    // Unpack tagging kmers once and reuse in all jellyfish tasks
     UNPACK_KMER_FASTA(channel.value(file(params.kmer_fasta, checkIfExists: true)))
+
+    // Derive the plain kmer list once and reuse in all DBG k-mer gathering tasks
+    MAKE_KMER_LIST(UNPACK_KMER_FASTA.out)
 
     // Build de Bruijn graphs where requested
     DBG_LIGHTER(
@@ -318,7 +331,7 @@ workflow {
     // Combine freshly built DBGs and pre-existing DBG files, then gather k-mers
     GATHER_KMERS_DBG(
         DBG_BCALM.out.mix(branched.existing_dbg),
-        UNPACK_KMER_FASTA.out,
+        MAKE_KMER_LIST.out,
         file("${projectDir}/scripts/dbg_to_kmer_table.py")
     )
 

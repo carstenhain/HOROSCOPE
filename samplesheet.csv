@@ -1,2 +1,3 @@
 NAME;FILE_PATH;FILE_TYPE;CRAM_REFERENCE_PATH;MAKE_DBG;NORMALIZATION
-HG00096_CRAM;/scratch/hain/centromere/tool_data/HG00096.final.cram;cram;/scratch/hain/centromere/tool_data/GRCh38_full_analysis_set_plus_decoy_hla.fa;true;global
+NA18522_DBG;/scratch/hain/centromere/tool_data/NA18522.unitigs.fa.gz;dbg;NA;false;global
+NA18523_DBG;/scratch/hain/centromere/tool_data/NA18523.unitigs.fa.gz;dbg;NA;false;global
